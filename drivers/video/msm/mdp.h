@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -733,6 +733,7 @@ extern struct mdp_hist_mgmt *mdp_hist_mgmt_array[];
 
 void mdp_hw_init(void);
 int mdp_ppp_pipe_wait(void);
+void mdp_pipe_kickoff_simplified(uint32 term);
 void mdp_pipe_kickoff(uint32 term, struct msm_fb_data_type *mfd);
 void mdp_clk_ctrl(int on);
 void mdp_pipe_ctrl(MDP_BLOCK_TYPE block, MDP_BLOCK_POWER_STATE state,
@@ -776,7 +777,7 @@ void mdp_dma3_update(struct msm_fb_data_type *mfd);
 int mdp_lcdc_on(struct platform_device *pdev);
 int mdp_lcdc_off(struct platform_device *pdev);
 void mdp_lcdc_update(struct msm_fb_data_type *mfd);
-
+void mdp_free_splash_buffer(struct msm_fb_data_type *mfd);
 #ifdef CONFIG_FB_MSM_MDP303
 int mdp_dsi_video_on(struct platform_device *pdev);
 int mdp_dsi_video_off(struct platform_device *pdev);
@@ -794,10 +795,6 @@ static inline int mdp4_lcdc_off(struct platform_device *pdev)
 {
 	return 0;
 }
-static inline int mdp4_mddi_off(struct platform_device *pdev)
-{
-	return 0;
-}
 static inline int mdp4_dsi_cmd_on(struct platform_device *pdev)
 {
 	return 0;
@@ -810,19 +807,6 @@ static inline int mdp4_lcdc_on(struct platform_device *pdev)
 {
 	return 0;
 }
-static inline int mdp4_mddi_on(struct platform_device *pdev)
-{
-	return 0;
-}
-#endif
-
-
-#ifndef CONFIG_FB_MSM_MDDI
-static inline void mdp4_mddi_rdptr_init(int cndx)
-{
-	/* empty */
-}
-
 #endif
 
 void set_cont_splashScreen_status(int);
@@ -847,12 +831,14 @@ int mdp_set_core_clk(u32 rate);
 int mdp_clk_round_rate(u32 rate);
 
 unsigned long mdp_get_core_clk(void);
-unsigned long mdp_perf_level2clk_rate(uint32 perf_level);
 
 #ifdef CONFIG_MSM_BUS_SCALING
-int mdp_bus_scale_update_request(uint32_t index);
+int mdp_bus_scale_update_request(u64 ab_p0, u64 ib_p0, u64 ab_p1, u64 ib_p1);
 #else
-static inline int mdp_bus_scale_update_request(uint32_t index)
+static inline int mdp_bus_scale_update_request(u64 ab_p0,
+					       u64 ib_p0,
+					       u64 ab_p1,
+					       u64 ib_p1)
 {
 	return 0;
 }
@@ -890,6 +876,8 @@ void mdp_histogram_handle_isr(struct mdp_hist_mgmt *mgmt);
 void __mdp_histogram_kickoff(struct mdp_hist_mgmt *mgmt);
 void __mdp_histogram_reset(struct mdp_hist_mgmt *mgmt);
 void mdp_footswitch_ctrl(boolean on);
+int mdp_enable_iommu_clocks(void);
+int mdp_disable_iommu_clocks(void);
 
 #ifdef CONFIG_FB_MSM_MDP303
 static inline void mdp4_dsi_cmd_dma_busy_wait(struct msm_fb_data_type *mfd)
@@ -928,6 +916,9 @@ int mdp_ppp_v4l2_overlay_clear(void);
 int mdp_ppp_v4l2_overlay_play(struct fb_info *info,
 	unsigned long srcp0_addr, unsigned long srcp0_size,
 	unsigned long srcp1_addr, unsigned long srcp1_size);
+void mdp_update_pm(struct msm_fb_data_type *mfd, ktime_t pre_vsync);
+
+u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd);
 
 #ifdef CONFIG_FB_MSM_DTV
 void mdp_vid_quant_set(void);
