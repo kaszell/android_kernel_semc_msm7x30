@@ -583,10 +583,11 @@ void mdp4_dmap_done_mddi(int cndx)
 	pr_debug("%s: ov_koff=%d ov_done=%d dmap_koff=%d dmap_done=%d cpu=%d\n",
 		__func__, vctrl->ov_koff, vctrl->ov_done, vctrl->dmap_koff,
 		vctrl->dmap_done, smp_processor_id());
-	complete(&vctrl->dmap_comp);
 
 	if (mdp_rev <= MDP_REV_41)
 		mdp4_mixer_blend_cfg(pipe->mixer_num);
+
+	complete(&vctrl->dmap_comp);
 
 	if (diff <= 0) {
 		if (vctrl->blt_wait)
