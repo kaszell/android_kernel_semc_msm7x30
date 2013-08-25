@@ -3663,8 +3663,6 @@ int mdp4_overlay_wait4vsync(struct fb_info *info)
 			mdp4_dsi_cmd_wait4vsync(0);
 		else if (ctrl->panel_mode & MDP4_PANEL_LCDC)
 			mdp4_lcdc_wait4vsync(0);
-		else if (ctrl->panel_mode & MDP4_PANEL_MDDI)
-			mdp4_mddi_wait4vsync(0);
 	} else if (hdmi_prim_display || info->node == 1) {
 		mdp4_dtv_wait4vsync(0);
 	}

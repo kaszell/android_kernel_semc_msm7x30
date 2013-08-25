@@ -30,8 +30,6 @@
 #include "msm_fb.h"
 #include "mdp4.h"
 
-static int vsync_start_y_adjust = 4;
-
 #define MAX_CONTROLLER	1
 
 /*
@@ -411,8 +409,12 @@ int mdp4_mddi_pipe_commit(int cndx, int wait)
 
 	mdp4_stat.overlay_commit[pipe->mixer_num]++;
 
-	if (wait)
-		mdp4_mddi_wait4vsync(0);
+	if (wait) {
+		if (pipe->ov_blt_addr)
+			mdp4_mddi_wait4ov(0);
+		else
+			mdp4_mddi_wait4dmap(0);
+	}
 
 	return cnt;
 }
@@ -462,28 +464,6 @@ void mdp4_mddi_vsync_ctrl(struct fb_info *info, int enable)
 		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 	}
 	mutex_unlock(&vctrl->update_lock);
-}
-
-void mdp4_mddi_wait4vsync(int cndx)
-{
-	struct vsycn_ctrl *vctrl;
-	struct mdp4_overlay_pipe *pipe;
-
-	if (cndx >= MAX_CONTROLLER) {
-		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
-		return;
-	}
-
-	vctrl = &vsync_ctrl_db[cndx];
-	pipe = vctrl->base_pipe;
-
-	if (atomic_read(&vctrl->suspend) > 0)
-		return;
-
-	wait_event_interruptible_timeout(vctrl->wait_queue, 1,
-			msecs_to_jiffies(VSYNC_PERIOD * 8));
-
-	mdp4_stat.wait4vsync0++;
 }
 
 static void mdp4_mddi_wait4dmap(int cndx)
@@ -731,40 +711,6 @@ void mdp4_primary_rdptr(void)
 	primary_rdptr_isr(0);
 }
 
-void mdp4_mddi_vsync_enable(struct msm_fb_data_type *mfd,
-		struct mdp4_overlay_pipe *pipe, int which)
-{
-	uint32_t start_y, data, tear_en;
-
-	tear_en = (1 << which);
-
-	mdp_clk_ctrl(1);
-
-	if ((mfd->use_mdp_vsync) && (mfd->ibuf.vsync_enable) &&
-		(mfd->panel_info.lcd.vsync_enable)) {
-
-		if (vsync_start_y_adjust <= pipe->dst_y)
-			start_y = pipe->dst_y - vsync_start_y_adjust;
-		else
-			start_y = (mfd->total_lcd_lines - 1) -
-				(vsync_start_y_adjust - pipe->dst_y);
-		if (which == 0)
-			MDP_OUTP(MDP_BASE + 0x210, start_y);	/* primary */
-		else
-			MDP_OUTP(MDP_BASE + 0x214, start_y);	/* secondary */
-
-		data = inpdw(MDP_BASE + 0x20c);
-		data |= tear_en;
-		MDP_OUTP(MDP_BASE + 0x20c, data);
-	} else {
-		data = inpdw(MDP_BASE + 0x20c);
-		data &= ~tear_en;
-		MDP_OUTP(MDP_BASE + 0x20c, data);
-	}
-
-	mdp_clk_ctrl(0);
-}
-
 void mdp4_mddi_free_base_pipe(struct msm_fb_data_type *mfd)
 {
 	struct vsycn_ctrl *vctrl;
@@ -867,9 +813,6 @@ static void mdp4_overlay_update_mddi(struct msm_fb_data_type *mfd)
 	} else {
 		pipe = vctrl->base_pipe;
 	}
-
-	/* TE enabled */
-	mdp4_mddi_vsync_enable(mfd, pipe, 0);
 
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
 	mdp4_calc_blt_mdp_bw(mfd, pipe);
@@ -1143,13 +1086,12 @@ void mdp4_mddi_overlay(struct msm_fb_data_type *mfd)
 	}
 
 	if (pipe->mixer_stage == MDP4_MIXER_STAGE_BASE) {
-		mdp4_mddi_vsync_enable(mfd, pipe, 0);
 		mdp4_overlay_setup_pipe_addr(mfd, pipe);
 		mdp4_mddi_pipe_queue(0, pipe);
 	}
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
-	mdp4_mddi_pipe_commit(cndx, 0);
+	mdp4_mddi_pipe_commit(cndx, 1);
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 
