@@ -2869,6 +2869,10 @@ static int mdp4_calc_req_mdp_clk(struct msm_fb_data_type *mfd,
 		pr_debug("%s calculated mdp clk is less than pclk.\n",
 			__func__);
 	}
+
+	if (rst > mdp_max_clk)
+		return mdp_max_clk;
+
 	pr_debug("%s: required mdp clk %d\n", __func__, (u32)rst);
 
 	return (u32)rst;
