@@ -863,10 +863,7 @@ static void mdp4_overlay_update_mddi(struct msm_fb_data_type *mfd)
 
 	MDP_OUTP(MDP_BASE + 0x00098, 0x01);
 
-	ret = gpio_tlmm_config(
-		GPIO_CFG(mfd->vsync_gpio, 1, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN,
-		GPIO_CFG_2MA),
-		GPIO_CFG_ENABLE);
+	ret = gpio_request(mfd->vsync_gpio, "MDP_VSYNC");
 
 	vctrl->vsync_irq = MSM_GPIO_TO_INT(mfd->vsync_gpio);
 
