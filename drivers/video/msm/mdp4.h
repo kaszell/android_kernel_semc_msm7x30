@@ -603,7 +603,7 @@ void mdp4_dmap_done_mddi(int cndx);
 void mdp4_overlay0_done_mddi(int cndx);
 ssize_t mdp4_mddi_show_event(struct device *dev,
 		struct device_attribute *attr, char *buf);
-void mdp4_mddi_rdptr_init(int cndx);
+void mdp4_mddi_vsync_init(int cndx);
 void mdp4_mipi_vsync_enable(struct msm_fb_data_type *mfd,
 		struct mdp4_overlay_pipe *pipe, int which);
 void mdp4_mddi_free_base_pipe(struct msm_fb_data_type *mfd);

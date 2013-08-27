@@ -2993,8 +2993,13 @@ static int mdp_probe(struct platform_device *pdev)
 	case MDDI_PANEL:
 	case EBI2_PANEL:
 #ifndef CONFIG_FB_MSM_MDP303
+		if (mdp_pdata)
+			mfd->vsync_gpio = mdp_pdata->gpio;
+		else
+			mfd->vsync_gpio = -1;
+
 		mfd->dma_fnc = mdp4_mddi_overlay;
-		mfd->vsync_init = mdp4_mddi_rdptr_init;
+		mfd->vsync_init = mdp4_mddi_vsync_init;
 		mfd->vsync_show = mdp4_mddi_show_event;
 		if (mfd->panel_info.pdest == DISPLAY_1) {
 			if_no = PRIMARY_INTF_SEL;

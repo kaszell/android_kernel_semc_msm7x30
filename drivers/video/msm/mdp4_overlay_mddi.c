@@ -25,6 +25,7 @@
 #include <asm/system.h>
 #include <asm/mach-types.h>
 #include <mach/hardware.h>
+#include <mach/gpio.h>
 
 #include "mdp.h"
 #include "msm_fb.h"
@@ -72,6 +73,7 @@ static struct vsycn_ctrl {
 	u32 last_vsync_ms;
 	struct work_struct clk_work;
 	wait_queue_head_t wait_queue;
+	int vsync_irq;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
 static void vsync_irq_enable(int intr, int term)
@@ -455,8 +457,7 @@ void mdp4_mddi_vsync_ctrl(struct fb_info *info, int enable)
 				ktime_to_ms(ktime_get()) - VSYNC_MIN_DIFF_MS;
 		}
 		if (clk_set_on) {
-			vsync_irq_enable(INTR_PRIMARY_RDPTR,
-						MDP_PRIM_RDPTR_TERM);
+			enable_irq(vctrl->vsync_irq);
 		}
 	} else {
 		spin_lock_irqsave(&vctrl->spin_lock, flags);
@@ -501,11 +502,11 @@ static void mdp4_mddi_wait4ov(int cndx)
 }
 
 /*
- * primary_rdptr_isr:
+ * mdp4_mddi_primary_vsync:
  * called from interrupt context
  */
 
-static void primary_rdptr_isr(int cndx)
+static void mdp4_mddi_primary_vsync(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
 	uint32_t cur_vsync_ms;
@@ -645,7 +646,7 @@ static void clk_ctrl_work(struct work_struct *work)
 	mutex_lock(&vctrl->update_lock);
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (vctrl->clk_control && vctrl->clk_enabled) {
-		vsync_irq_disable(INTR_PRIMARY_RDPTR, MDP_PRIM_RDPTR_TERM);
+		disable_irq(vctrl->vsync_irq);
 		vctrl->clk_enabled = 0;
 		vctrl->clk_control = 0;
 		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
@@ -682,7 +683,13 @@ ssize_t mdp4_mddi_show_event(struct device *dev,
 	return ret;
 }
 
-void mdp4_mddi_rdptr_init(int cndx)
+static irqreturn_t mdp4_mddi_vsync_irq(int irq, void *data)
+{
+	mdp4_mddi_primary_vsync(0);
+	return IRQ_HANDLED;
+}
+
+void mdp4_mddi_vsync_init(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
 
@@ -708,7 +715,7 @@ void mdp4_mddi_rdptr_init(int cndx)
 
 void mdp4_primary_rdptr(void)
 {
-	primary_rdptr_isr(0);
+	/* empty */
 }
 
 void mdp4_mddi_free_base_pipe(struct msm_fb_data_type *mfd)
@@ -856,6 +863,16 @@ static void mdp4_overlay_update_mddi(struct msm_fb_data_type *mfd)
 
 	MDP_OUTP(MDP_BASE + 0x00098, 0x01);
 
+	ret = gpio_tlmm_config(
+		GPIO_CFG(mfd->vsync_gpio, 1, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN,
+		GPIO_CFG_2MA),
+		GPIO_CFG_ENABLE);
+
+	vctrl->vsync_irq = MSM_GPIO_TO_INT(mfd->vsync_gpio);
+
+	ret = request_irq(vctrl->vsync_irq, mdp4_mddi_vsync_irq,
+		IRQF_TRIGGER_FALLING, "MDP_VSYNC", vctrl);
+
 	mdp4_overlay_solidfill_init(pipe);
 
 	mdp4_overlay_setup_pipe_addr(mfd, pipe);
@@ -983,7 +1000,7 @@ int mdp4_mddi_off(struct platform_device *pdev)
 	}
 
 	if (vctrl->vsync_enabled) {
-		vsync_irq_disable(INTR_PRIMARY_RDPTR, MDP_PRIM_RDPTR_TERM);
+		disable_irq(vctrl->vsync_irq);
 		vctrl->vsync_enabled = 0;
 	}
 
@@ -1058,7 +1075,7 @@ static int mdp4_mddi_clk_check(struct vsycn_ctrl *vctrl)
 	if (clk_set_on) {
 		pr_debug("%s: SET_CLK_ON\n", __func__);
 		mdp_clk_ctrl(1);
-		vsync_irq_enable(INTR_PRIMARY_RDPTR, MDP_PRIM_RDPTR_TERM);
+		enable_irq(vctrl->vsync_irq);
 	}
 
 	return 0;
