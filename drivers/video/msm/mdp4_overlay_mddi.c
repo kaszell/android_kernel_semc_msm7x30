@@ -74,6 +74,7 @@ static struct vsycn_ctrl {
 	struct work_struct clk_work;
 	wait_queue_head_t wait_queue;
 	int vsync_irq;
+	int vsync_irq_enabled;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
 static void vsync_irq_enable(int intr, int term)
@@ -98,6 +99,25 @@ static void vsync_irq_disable(int intr, int term)
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
 	mdp_disable_irq_nosync(term);
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
+}
+
+static void mdp4_vsync_irq(int enable)
+{
+	struct vsycn_ctrl *vctrl;
+
+	vctrl = &vsync_ctrl_db[0];
+
+	if (!vctrl || !vctrl->vsync_irq) {
+		pr_err("%s: No vsync irq\n", __func__);
+		return;
+	}
+
+	if (enable && !vctrl->vsync_irq_enabled)
+		enable_irq(vctrl->vsync_irq);
+	else if (!enable && vctrl->vsync_irq_enabled)
+		disable_irq(vctrl->vsync_irq);
+
+	vctrl->vsync_irq_enabled = enable;
 }
 
 static void mdp4_mddi_blt_ov_update(struct mdp4_overlay_pipe *pipe)
@@ -457,7 +477,7 @@ void mdp4_mddi_vsync_ctrl(struct fb_info *info, int enable)
 				ktime_to_ms(ktime_get()) - VSYNC_MIN_DIFF_MS;
 		}
 		if (clk_set_on) {
-			enable_irq(vctrl->vsync_irq);
+			mdp4_vsync_irq(1);
 		}
 	} else {
 		spin_lock_irqsave(&vctrl->spin_lock, flags);
@@ -646,7 +666,7 @@ static void clk_ctrl_work(struct work_struct *work)
 	mutex_lock(&vctrl->update_lock);
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (vctrl->clk_control && vctrl->clk_enabled) {
-		disable_irq(vctrl->vsync_irq);
+		mdp4_vsync_irq(0);
 		vctrl->clk_enabled = 0;
 		vctrl->clk_control = 0;
 		spin_unlock_irqrestore(&vctrl->spin_lock, flags);
@@ -863,12 +883,15 @@ static void mdp4_overlay_update_mddi(struct msm_fb_data_type *mfd)
 
 	MDP_OUTP(MDP_BASE + 0x00098, 0x01);
 
-	ret = gpio_request(mfd->vsync_gpio, "MDP_VSYNC");
+	if (!vctrl->vsync_irq) {
+		ret = gpio_request(mfd->vsync_gpio, "MDP_VSYNC");
 
-	vctrl->vsync_irq = MSM_GPIO_TO_INT(mfd->vsync_gpio);
+		vctrl->vsync_irq = MSM_GPIO_TO_INT(mfd->vsync_gpio);
 
-	ret = request_irq(vctrl->vsync_irq, mdp4_mddi_vsync_irq,
-		IRQF_TRIGGER_FALLING, "MDP_VSYNC", vctrl);
+		ret = request_irq(vctrl->vsync_irq, mdp4_mddi_vsync_irq,
+			IRQF_TRIGGER_FALLING, "MDP_VSYNC", vctrl);
+		vctrl->vsync_irq_enabled = 1;
+	}
 
 	mdp4_overlay_solidfill_init(pipe);
 
@@ -997,7 +1020,7 @@ int mdp4_mddi_off(struct platform_device *pdev)
 	}
 
 	if (vctrl->vsync_enabled) {
-		disable_irq(vctrl->vsync_irq);
+		mdp4_vsync_irq(0);
 		vctrl->vsync_enabled = 0;
 	}
 
@@ -1072,7 +1095,7 @@ static int mdp4_mddi_clk_check(struct vsycn_ctrl *vctrl)
 	if (clk_set_on) {
 		pr_debug("%s: SET_CLK_ON\n", __func__);
 		mdp_clk_ctrl(1);
-		enable_irq(vctrl->vsync_irq);
+		mdp4_vsync_irq(1);
 	}
 
 	return 0;
